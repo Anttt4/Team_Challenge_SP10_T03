@@ -4,8 +4,7 @@ import numpy as np
 
 # Importar librerias para analisis de datos
 from scipy.stats import pearsonr
-# falta incluir las de los test de hipotesis con las categóricas
-
+from scipy.stats import f_oneway, kruskal, ttest_ind, mannwhitneyu
 
 # Importar librerias para visualizacion
 import seaborn as sns
@@ -266,3 +265,211 @@ def plot_features_num_regression(df, target_col="", columns=[], umbral_corr=0, p
         plt.show()
 
     return columnas_filtradas
+
+def get_features_cat_regression(df, target_col, pvalue=0.05, normal_distribution=False):
+    """
+    Selecciona columnas categóricas relacionadas con la columna objetivo según pruebas estadísticas.
+
+    Argumentos:
+        df (pd.DataFrame): DataFrame con los datos.
+        target_col (str): Nombre de la columna objetivo. Debe ser numérica continua.
+        pvalue (float): Valor de corte para el test estadístico. Valor por defecto: 0.05.
+        normal_distribution (bool): Indica si la variable objetivo tiene distribución normal. Valor por defecto: False.
+
+    Retorna:
+        list: Lista de columnas categóricas relacionadas estadísticamente con la columna objetivo.
+              Si algún argumento no es válido, devuelve None e imprime un mensaje de error.
+    """
+    # Comprobaciones iniciales
+    if not isinstance(df, pd.DataFrame):
+        print("El argumento 'df' no es un DataFrame válido.")
+        return None
+
+    # Verificar si la columna objetivo está en el DataFrame
+    if target_col not in df.columns:
+        print(f"La columna objetivo '{target_col}' no está en el DataFrame.")
+        return None
+
+    # Verificar que target_col sea numérica continua, según tipifica_variables, y no sea de tipo object ni string
+    df_tipo = tipifica_variables(df)
+    fila = df_tipo.loc[df_tipo["nombre_variable"] == target_col]
+    if fila.empty:
+        print(f"La columna '{target_col}' no existe en la salida de tipifica_variables.")
+        return None
+    tipo_variable = fila["dtype"].values[0]
+    if tipo_variable in ["object", "string"]:
+        print(f"La columna '{target_col}' es de tipo {tipo_variable} y no es válida como columna objetivo.")
+        return None
+
+    # Filtrar columnas categóricas
+    categoricas = df.select_dtypes(include=["object", "category"]).columns.tolist()
+    if not categoricas:
+        print("No se encontraron columnas categóricas en el DataFrame.")
+        return []
+
+    # Lista para almacenar las columnas que pasan el test estadístico
+    columnas_significativas = []
+
+    for col in categoricas:
+        # Verificar si la columna categórica tiene al menos 2 categorías
+        if df[col].nunique() < 2:
+            print(f"La columna '{col}' tiene menos de 2 categorías y no se considerará.")
+            continue
+
+        # Crear grupos basados en la variable categórica
+        grupos = [df[target_col][df[col] == cat].dropna() for cat in df[col].unique()]
+
+        # Verificar si los grupos tienen suficientes datos
+        if any(len(grupo) < 2 for grupo in grupos):
+            print(f"La columna '{col}' tiene categorías con datos insuficientes y no se considerará.")
+            continue
+
+        # Seleccionar el test estadístico según el número de categorías
+        try:
+            if len(grupos) == 2:
+                if normal_distribution:
+                    # Prueba t para variables binarias si la distribución es normal
+                    estadistico, p_valor = ttest_ind(grupos[0], grupos[1])
+                else:
+                    # Prueba de Mann-Whitney U si la distribución no es normal
+                    estadistico, p_valor = mannwhitneyu(grupos[0], grupos[1], alternative='two-sided')
+            elif len(grupos) > 2:
+                # ANOVA para más de dos categorías si la distribución es normal
+                estadistico, p_valor = f_oneway(*grupos)
+        except ValueError:
+            # Si ANOVA falla (posiblemente por normalidad), intentar Kruskal-Wallis
+            estadistico, p_valor = kruskal(*grupos)
+
+        # Comprobar si el p-valor cumple con el umbral
+        if p_valor <= pvalue:
+            columnas_significativas.append(col)
+        else:
+            print(f"La columna '{col}' no supera el test estadístico (p-valor = {p_valor:.3f}).")
+
+    return columnas_significativas
+
+def plot_features_cat_regression(df, target_col="", columns=[], pvalue=0.05, with_individual_plot=False, normal_distribution=False):
+    """
+    Genera histogramas agrupados de la variable "target_col" para cada una de las variables categóricas
+    que cumplen el criterio de significación estadística.
+
+    Argumentos:
+        df (pd.DataFrame): DataFrame con los datos.
+        target_col (str): Nombre de la columna objetivo. Debe ser numérica continua.
+        columns (list of str): Lista de columnas categóricas a evaluar. Si está vacía, se usarán todas las categóricas.
+        pvalue (float): Nivel de significación estadística. Valor por defecto: 0.05.
+        with_individual_plot (bool): Si es True, genera histogramas individuales para cada columna significativa.
+        normal_distribution (bool): Indica si la variable objetivo tiene distribución normal. Valor por defecto: False.
+
+    Retorna:
+        list: Lista de columnas categóricas que cumplen el criterio de significación estadística.
+    """
+    # Comprobaciones iniciales
+    if not isinstance(df, pd.DataFrame):
+        print("El argumento 'df' no es un DataFrame válido.")
+        return None
+
+    # Verificar si la columna objetivo está en el DataFrame
+    if target_col not in df.columns:
+        print(f"La columna objetivo '{target_col}' no está en el DataFrame.")
+        return None
+
+    # Verificar que target_col sea numérica continua, según tipifica_variables, y no sea de tipo object ni string
+    df_tipo = tipifica_variables(df)
+    fila = df_tipo.loc[df_tipo["nombre_variable"] == target_col]
+    if fila.empty:
+        print(f"La columna '{target_col}' no existe en la salida de tipifica_variables.")
+        return None
+    tipo_variable = fila["dtype"].values[0]
+    if tipo_variable in ["object", "string"]:
+        print(f"La columna '{target_col}' es de tipo {tipo_variable} y no es válida como columna objetivo.")
+        return None
+
+    # Si 'columns' está vacío, seleccionar todas las columnas categóricas
+    if not columns:
+        columns = df.select_dtypes(include=["object", "category"]).columns.tolist()
+
+    # Comprobar si hay columnas categóricas
+    if not columns:
+        print("No se encontraron columnas categóricas en el DataFrame.")
+        return []
+
+    # Filtrar columnas significativas
+    columnas_significativas = []
+
+    for col in columns:
+        # Verificar si la columna categórica tiene al menos 2 categorías
+        if df[col].nunique() < 2:
+            print(f"La columna '{col}' tiene menos de 2 categorías y no se considerará.")
+            continue
+
+        # Crear grupos basados en la variable categórica
+        grupos = [df[target_col][df[col] == cat].dropna() for cat in df[col].unique()]
+
+        # Verificar si los grupos tienen suficientes datos
+        if any(len(grupo) < 2 for grupo in grupos):
+            print(f"La columna '{col}' tiene categorías con datos insuficientes y no se considerará.")
+            continue
+
+        # Seleccionar el test estadístico
+        try:
+            if len(grupos) == 2:
+                if normal_distribution:
+                    # Prueba t para variables binarias si la distribución es normal
+                    estadistico, p_valor = ttest_ind(grupos[0], grupos[1])
+                else:
+                    # Prueba de Mann-Whitney U si la distribución no es normal
+                    estadistico, p_valor = mannwhitneyu(grupos[0], grupos[1], alternative='two-sided')
+            else:
+                if normal_distribution:
+                    # ANOVA para datos con distribución normal
+                    estadistico, p_valor = f_oneway(*grupos)
+                else:
+                    # Kruskal-Wallis para datos sin distribución normal
+                    estadistico, p_valor = kruskal(*grupos)
+        except ValueError:
+            print(f"La columna '{col}' no pudo ser evaluada debido a problemas en los datos.")
+            continue
+
+        # Comprobar si el p-valor cumple con el umbral
+        if p_valor <= pvalue:
+            columnas_significativas.append(col)
+
+    # Generar gráficos solo para las columnas significativas
+    if with_individual_plot:
+        for col in columnas_significativas:
+            plt.figure(figsize=(10, 6))
+            for valor in df[col].unique():
+                sns.histplot(df.loc[df[col] == valor,target_col], kde= True, label=valor,bins=40)
+ 
+            plt.title(f"Histograma de {target_col} agrupado por {col} (p-valor = {p_valor:.3f})")
+            plt.xlabel(target_col)
+            plt.ylabel("Frecuencia")
+            plt.legend();  
+            plt.show()
+     
+    else:
+        num_plots = len(columnas_significativas)
+        if num_plots > 0:
+            num_cols = 2
+            num_rows = (num_plots + 1) // num_cols
+
+            fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 5 * num_rows))
+            axes = axes.flatten()
+
+            for i, col in enumerate(columnas_significativas):
+                for valor in df[col].unique():
+                    sns.histplot(df.loc[df[col] == valor,target_col], kde= True, label=valor, ax=axes[i],bins=40)
+                axes[i].set_title(f"Histograma de {target_col} agrupado por {col} (p-valor = {p_valor:.3f})")
+                axes[i].set_xlabel(target_col)
+                axes[i].set_ylabel("Frecuencia")
+                axes[i].legend()
+
+            # Eliminar axes no utilizados
+            for j in range(i + 1, len(axes)):
+                fig.delaxes(axes[j])
+
+            plt.tight_layout()
+            plt.show()
+
+    return columnas_significativas
