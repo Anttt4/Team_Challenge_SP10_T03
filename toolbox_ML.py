@@ -103,16 +103,19 @@ def get_features_num_regression(df, target_col, umbral_corr, pvalue=None):
         print(f"La columna '{target_col}' no existe en el DataFrame.")
         return None
 
-    # Comprobar que la columna objetivo es numérica y no es de tipo object ni string
+    # Verificar que target_col sea numérica continua usando tipifica_variables
     df_tipo = tipifica_variables(df)
     fila = df_tipo.loc[df_tipo["nombre_variable"] == target_col]
-    if fila.empty:
-        print(f"La columna '{target_col}' no existe en la salida de tipifica_variables.")
+    if fila.empty or fila["tipo_sugerido"].values[0] != "Numerica continua":
+        print(f"La columna '{target_col}' no es válida. Debe ser numérica continua según tipifica_variables.")
         return None
+
+    # validar que la columna objetivo no sea de tipo object o string    
     tipo_variable = fila["dtype"].values[0]
     if tipo_variable in ["object", "string"]:
         print(f"La columna '{target_col}' es de tipo {tipo_variable} y no es válida como columna objetivo.")
         return None
+
 
     # Validar que el umbral de correlación esté en el rango [0, 1]
     if not (0 <= umbral_corr <= 1):
@@ -194,17 +197,14 @@ def plot_features_num_regression(df, target_col="", columns=[], umbral_corr=0, p
         print("El argumento 'df' no es un DataFrame válido.")
         return None
 
-    # Comprobar si la columna objetivo es válida, porque está en el DataFrame
-    if target_col == "" or target_col not in df.columns:
-        print("Debe proporcionar una columna objetivo válida en 'target_col'.")
-        return None
-
-    # Comprobar que la columna objetivo es numérica continua y no es de tipo object ni string
+    # Verificar que target_col sea numérica continua usando tipifica_variables
     df_tipo = tipifica_variables(df)
     fila = df_tipo.loc[df_tipo["nombre_variable"] == target_col]
-    if fila.empty:
-        print(f"La columna '{target_col}' no existe en la salida de tipifica_variables.")
+    if fila.empty or fila["tipo_sugerido"].values[0] != "Numerica continua":
+        print(f"La columna '{target_col}' no es válida. Debe ser numérica continua según tipifica_variables.")
         return None
+
+    # validar que la columna objetivo no sea de tipo object o string    
     tipo_variable = fila["dtype"].values[0]
     if tipo_variable in ["object", "string"]:
         print(f"La columna '{target_col}' es de tipo {tipo_variable} y no es válida como columna objetivo.")
@@ -290,19 +290,21 @@ def get_features_cat_regression(df, target_col, pvalue=0.05, normal_distribution
         print(f"La columna objetivo '{target_col}' no está en el DataFrame.")
         return None
 
-    # Verificar que target_col sea numérica continua, según tipifica_variables, y no sea de tipo object ni string
+    # Verificar que target_col sea numérica continua usando tipifica_variables
     df_tipo = tipifica_variables(df)
     fila = df_tipo.loc[df_tipo["nombre_variable"] == target_col]
-    if fila.empty:
-        print(f"La columna '{target_col}' no existe en la salida de tipifica_variables.")
+    if fila.empty or fila["tipo_sugerido"].values[0] != "Numerica continua":
+        print(f"La columna '{target_col}' no es válida. Debe ser numérica continua según tipifica_variables.")
         return None
+
+    # validar que la columna objetivo no sea de tipo object o string    
     tipo_variable = fila["dtype"].values[0]
     if tipo_variable in ["object", "string"]:
         print(f"La columna '{target_col}' es de tipo {tipo_variable} y no es válida como columna objetivo.")
         return None
 
     # Filtrar columnas categóricas
-    categoricas = df.select_dtypes(include=["object", "category"]).columns.tolist()
+    categoricas = df_tipo.loc[df_tipo['tipo_sugerido'].isin(['Categorica', 'Binaria']), 'nombre_variable'].tolist()
     if not categoricas:
         print("No se encontraron columnas categóricas en el DataFrame.")
         return []
@@ -374,30 +376,29 @@ def plot_features_cat_regression(df, target_col="", columns=[], pvalue=0.05, wit
         print(f"La columna objetivo '{target_col}' no está en el DataFrame.")
         return None
 
-    # Verificar que target_col sea numérica continua, según tipifica_variables, y no sea de tipo object ni string
+    # Verificar que target_col sea numérica continua usando tipifica_variables
     df_tipo = tipifica_variables(df)
     fila = df_tipo.loc[df_tipo["nombre_variable"] == target_col]
-    if fila.empty:
-        print(f"La columna '{target_col}' no existe en la salida de tipifica_variables.")
+    if fila.empty or fila["tipo_sugerido"].values[0] != "Numerica continua":
+        print(f"La columna '{target_col}' no es válida. Debe ser numérica continua según tipifica_variables.")
         return None
+
+    # validar que la columna objetivo no sea de tipo object o string    
     tipo_variable = fila["dtype"].values[0]
     if tipo_variable in ["object", "string"]:
         print(f"La columna '{target_col}' es de tipo {tipo_variable} y no es válida como columna objetivo.")
         return None
 
-    # Si 'columns' está vacío, seleccionar todas las columnas categóricas
-    if not columns:
-        columns = df.select_dtypes(include=["object", "category"]).columns.tolist()
-
-    # Comprobar si hay columnas categóricas
-    if not columns:
+    # Filtrar columnas categóricas
+    categoricas = df_tipo.loc[df_tipo['tipo_sugerido'].isin(['Categorica', 'Binaria']), 'nombre_variable'].tolist()
+    if not categoricas:
         print("No se encontraron columnas categóricas en el DataFrame.")
         return []
 
     # Filtrar columnas significativas
     columnas_significativas = []
 
-    for col in columns:
+    for col in categoricas:
         # Verificar si la columna categórica tiene al menos 2 categorías
         if df[col].nunique() < 2:
             print(f"La columna '{col}' tiene menos de 2 categorías y no se considerará.")
